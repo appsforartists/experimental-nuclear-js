@@ -1,0 +1,12 @@
+{
+  "name": "experimental-nuclear-js",
+  "version": "0.0.1",
+  "description": "Experimenting with new APIs for Nuclear",
+  "main": "src/index.js",
+  "dependencies": {
+    "nuclear-js": "1.0.1"
+  },
+  "contributors": [
+    "Brenton Simpson <bresimpson@ebay.com> (http://appsforartists.com)"
+  ]
+}
