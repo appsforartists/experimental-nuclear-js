@@ -17,6 +17,7 @@
 
 var Immutable = require("immutable");
 var nuclear   = require("nuclear-js/src/main");
+nuclear.utils = require("nuclear-js/src/utils");
 var asap      = require("asap")
 var cookie    = require("cookie");
 
@@ -24,6 +25,22 @@ var {
   Reactor,
   Store,
 } = nuclear;
+
+// Need to validate getters ourselves because of
+// https://github.com/optimizely/nuclear-js/issues/59
+var {
+  isArray,
+  isString,
+  isFunction,
+} = nuclear.utils;
+
+var isGetter = function (value) {
+  return isArray(value) && value.every(
+    (item, i) =>    isString(item)
+                 || (i === value.length - 1 && isFunction(item))
+                 || isGetter(item)
+  );
+};
 
 Reactor.prototype.createActions = function (actionNames) {
   return Immutable.fromJS(actionNames || []).toMap().mapEntries(
@@ -88,7 +105,7 @@ Reactor.prototype.serializeForRequests = function () {
   if (!global.document)
     return;
 
-  var serializedState = this.serialize(this.storesToSerializeForRequests);
+  var serializedState = this.serialize(this.storesToSerializeForRequests, true);
 
   document.cookie = cookie.serialize(
     "nuclearState",
@@ -102,14 +119,32 @@ Reactor.prototype.serializeForRequests = function () {
   );
 };
 
-Reactor.prototype.serialize = function (stores) {
+Reactor.prototype.serialize = function (stores, filterStateForRequest) {
   return (stores || this.__stores).map(
     (store, storeName) => [store, this.__state.get(storeName)]
   ).map(
-    ([store, state]) => store.serialize
-                          ? store.serialize(state)
-                          : nuclear.toJS(state)
-  );
+    ([store, state]) => {
+      if (filterStateForRequest) {
+        if (isGetter(store.includeOnRequests) && state.get) {
+          var keys = this.evaluate(store.includeOnRequests);
+
+          if (!Immutable.Iterable.isIterable(keys))
+            keys = Immutable.List([keys]);
+
+          state = keys.toMap().mapEntries(
+            ([i, key]) => [key, state.get(key)]
+          );
+
+        } else if (store.includeOnRequests !== Boolean(store.includeOnRequests)) {
+          console.warn("If store.includeOnRequests is not a Boolean, the store should be a Map and the getter should evaluate to a List of keys to filter the Map with.  Until you fix this, we'll treat includeOnRequests as true.");
+        }
+      }
+
+      return store.serialize
+        ? store.serialize(state)
+        : nuclear.toJS(state);
+    }
+  ).toObject();
 };
 
 Reactor.prototype.deserialize = function (serializedStates) {
@@ -127,6 +162,18 @@ Reactor.prototype.deserialize = function (serializedStates) {
                                     ? store.deserialize(serializedState)
                                     : nuclear.toImmutable(serializedState)
   );
+
+  if (this.storesToSerializeForRequests.size)
+    this.serializeForRequests();
+};
+
+var originalReset = Reactor.prototype.reset;
+
+Reactor.prototype.reset = function () {
+  originalReset.apply(this, arguments);
+
+  if (this.storesToSerializeForRequests.size)
+    this.serializeForRequests();
 };
 
 var ReactorConstructor = function (definitions) {
