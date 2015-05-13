@@ -4,6 +4,8 @@
  *
  *  - createGetters:
  *    - convert [getter, "prop", "subprop"] to ["path", "to", "getter", "prop", "subprop"]
+ *    - warn if path doesn't start with a module's own store name or a getter
+ *    - might need to make these first so stores with includeOnRequests can find the getters
  *
  *  - Helpers to create common stores:
  *    - on(action, (lastValue, { newValue }) => newValue)
@@ -12,8 +14,11 @@
  *  - Come up with a name for the isomophic sugar (e.g. not experimental-nuclear-js)
  */
 
+
 var Immutable = require("immutable");
 var nuclear   = require("nuclear-js/src/main");
+var asap      = require("asap")
+var cookie    = require("cookie");
 
 var {
   Reactor,
@@ -51,14 +56,54 @@ Reactor.prototype.createActions = function (actionNames) {
 Reactor.prototype.createStores = function (storeDefinitions) {
   var stores = Immutable.Map(storeDefinitions).map(
     definition => new Store(definition)
-  ).toObject();
+  );
 
-  this.registerStores(stores);
-  return stores;
+  this.registerStores(stores.toObject());
+
+  this.storesToSerializeForRequests = stores.filter(
+    store => store.includeOnRequests
+  ).map(
+    (store, storeName) => {
+      store.__handlers = store.__handlers.map(
+        listener => (...listenerArgs) => {
+                      // The Nuclear Store will update its state using the listener's return
+                      // value.  Update the cookie as soon as possible after that happens, so we
+                      // are ready to send it the next time the user navigates away.
+                      asap(() => this.serializeForRequests());
+
+                      return listener.apply(store, listenerArgs);
+                    }
+      );
+
+      return store;
+    }
+  ).merge(
+    this.storesToSerializeForRequests
+  );
+
+  return stores.toObject();
 };
 
-Reactor.prototype.serialize = function () {
-  return this.__stores.map(
+Reactor.prototype.serializeForRequests = function () {
+  if (!global.document)
+    return;
+
+  var serializedState = this.serialize(this.storesToSerializeForRequests);
+
+  document.cookie = cookie.serialize(
+    "nuclearState",
+
+    JSON.stringify(serializedState),
+
+    {
+      // apply to all paths by default; this should probably be configurable
+      "path":   "/"
+    }
+  );
+};
+
+Reactor.prototype.serialize = function (stores) {
+  return (stores || this.__stores).map(
     (store, storeName) => [store, this.__state.get(storeName)]
   ).map(
     ([store, state]) => store.serialize
@@ -156,6 +201,6 @@ module.exports = Object.assign(
   nuclear,
 
   {
-    "Reactor":  ReactorConstructor
+    "Reactor":      ReactorConstructor,
   }
 );

@@ -4,7 +4,9 @@
   "description": "Experimenting with new APIs for Nuclear",
   "main": "src/index.js",
   "dependencies": {
-    "nuclear-js": "1.0.1"
+    "asap": "2",
+    "cookie": "0.1",
+    "nuclear-js": "1"
   },
   "contributors": [
     "Brenton Simpson <bresimpson@ebay.com> (http://appsforartists.com)"
