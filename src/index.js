@@ -121,9 +121,9 @@ Reactor.prototype.serializeForRequests = function () {
 
 Reactor.prototype.serialize = function (stores, filterStateForRequest) {
   return (stores || this.__stores).map(
-    (store, storeName) => [store, this.__state.get(storeName)]
+    (store, storeName) => [store, this.__state.get(storeName), storeName]
   ).map(
-    ([store, state]) => {
+    ([store, state, storeName]) => {
       if (filterStateForRequest) {
         if (isGetter(store.includeOnRequests) && state.get) {
           var keys = this.evaluate(store.includeOnRequests);
@@ -131,12 +131,13 @@ Reactor.prototype.serialize = function (stores, filterStateForRequest) {
           if (!Immutable.Iterable.isIterable(keys))
             keys = Immutable.List([keys]);
 
+
           state = keys.toMap().mapEntries(
             ([i, key]) => [key, state.get(key)]
           );
 
         } else if (store.includeOnRequests !== Boolean(store.includeOnRequests)) {
-          console.warn("If store.includeOnRequests is not a Boolean, the store should be a Map and the getter should evaluate to a List of keys to filter the Map with.  Until you fix this, we'll treat includeOnRequests as true.");
+          console.warn(`If store.includeOnRequests is not a Boolean, the store should be a Map and the getter should evaluate to a List of keys to filter the Map with.  Until you fix this, we'll treat ${ storeName }.includeOnRequests as true.`);
         }
       }
 
